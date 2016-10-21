@@ -779,7 +779,7 @@ cdef class SquaredHinge(LossFunction):
                                     double C,
                                     double* out):
 
-        cdef double scale = 2 * C * n_vectors
+        cdef double scale = 1 * C * n_vectors
         self._lipschitz_constant(X, scale, out)
 
     cdef void lipschitz_constant_mc(self,
@@ -982,17 +982,15 @@ cdef class Log(LossFunction):
         Lpp[0] = 0
         # Objective value
         L[0] = 0
-
         for ii in xrange(n_nz):
             i = indices[ii]
             val = data[ii] * y[i]
-
             exppred = 1 + 1 / b[i]
             tau = 1 / exppred
-            tmp = val * C
-            Lp[0] += tmp * (tau - 1)
-            Lpp[0] += tmp * val * tau * (1 - tau)
-            L[0] += C * log(exppred)
+            tmp = tau * data[ii]
+            Lp[0] += C * (tmp - val)
+            Lpp[0] += C * tau * (1 - tau) * data[ii] * data[ii]
+            L[0] += C * (- y[i] * log(b[i]) + log(1 + b[i]))
 
 
     cdef void update(self,
@@ -1006,16 +1004,18 @@ cdef class Log(LossFunction):
                      double *b,
                      double *L_new):
         cdef int i, ii
-        cdef double exppred
+        #cdef double exppred
 
         # New objective value
         L_new[0] = 0
 
         for ii in xrange(n_nz):
             i = indices[ii]
-            b[i] /= exp(z_diff * data[ii] * y[i])
-            exppred = 1 + 1 / b[i]
-            L_new[0] += C * log(exppred)
+            # b[i] /= exp(z_diff * data[ii] * y[i])
+            b[i] /= exp(z_diff * data[ii])
+            #exppred = 1 + 1 / b[i]
+            #L_new[0] += C * log(exppred)
+            L_new[0] += C * (- y[i] * log(b[i]) + log(1 + b[i]))
 
     # Multiclass
 
@@ -1144,7 +1144,8 @@ cdef class Log(LossFunction):
                 b[i] += data[ii] * w[j]
 
         for i in xrange(n_samples):
-            b[i] = exp(y[i] * b[i])
+            # b[i] = exp(y[i] * b[i])
+            b[i] = exp(b[i])
 
     cdef void recompute_mc(self,
                            int n_vectors,
@@ -1194,7 +1195,7 @@ cdef class Log(LossFunction):
                                     double C,
                                     double* out):
 
-        cdef double scale = 0.25 * C * n_vectors
+        cdef double scale = 1 * C
         self._lipschitz_constant(X, scale, out)
 
     cdef void lipschitz_constant_mc(self,
@@ -1308,6 +1309,8 @@ def _primal_cd(self,
         # Initialize violations.
         violation_max = 0
         violation_sum = 0
+        M = -DBL_MAX
+        m = DBL_MAX
 
         s = 0
         while s < active_size:
